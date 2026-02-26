@@ -107,7 +107,7 @@ st.title("⚓ 선원 보건 안전 AI 리스크 관리 시스템")
 
 with st.sidebar:
     st.header("📋 데이터 입력")
-    search_name = st.text_input("분석 성명", placeholder="예: 양승덕")
+    search_name = st.text_input("분석 성명", placeholder="예: 홍길동")
     btn = st.button("분석 실행", use_container_width=True)
 
 if btn and search_name:
@@ -212,3 +212,4 @@ if btn and search_name:
             st.pyplot(fig)
     else:
         st.error("성명을 찾을 수 없습니다.")
+
