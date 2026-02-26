@@ -7,7 +7,7 @@ import re
 import os
 
 # 1. 페이지 설정
-st.set_page_config(page_title="선원 보건 안전 AI 리스크 관리", layout="wide")
+st.set_page_config(page_title="선원 보건 안전 AI", layout="wide")
 
 # 2. 그래프 한글 깨짐 방지 설정
 def set_korean_font():
@@ -30,7 +30,7 @@ def set_korean_font():
 
 set_korean_font()
 
-# [CRITERIA_MAP 데이터 동일]
+# [CRITERIA_MAP 데이터 유지]
 CRITERIA_MAP = {
     "Glucose": {"label": "Glucose (혈당)", "safe_high": 99, "warn_high": 125, "advice": {"안전": "공복 혈당이 정상 범위 내에 있으며 대사 기능이 매우 원활합니다.", "경계": "당뇨 전 단계 수준입니다. 식단 관리와 유산소 운동이 필수적입니다.", "위험": "고혈당 상태로 당뇨병 합병증 진행 위험이 큽니다. 전문의 진단이 필요합니다."}, "trend_bad": "상승", "risk_scenario": "당직 중 급격한 혈당 변화로 인한 의식 혼탁 및 집중력 장애 리스크."},
     "AST(GOT)": {"label": "AST (간수치:피로)", "safe_high": 40, "warn_high": 80, "advice": {"안전": "간 세포 손상 징후가 없으며 에너지 대사가 양호합니다.", "경계": "과로나 수면 부족으로 간 세포가 자극받은 상태입니다. 충분한 휴식을 권고합니다.", "위험": "활동성 간염이나 간 손상이 진행 중입니다. 전신 무력감이 동반될 수 있습니다."}, "trend_bad": "상승", "risk_scenario": "만성 피로 누적으로 인한 반응 속도 저하 및 긴급 상황 대응 능력 감소."},
@@ -69,11 +69,10 @@ def load_data_from_google_sheet(name):
 
 # 3. 사이드바 구성
 with st.sidebar:
-    st.header("📋 AI 선원 건강 관리")
+    st.header("📋 AI 선원 관리")
     search_name = st.text_input("분석 성명", placeholder="성명을 입력하세요")
     search_clicked = st.button("데이터 분석 실행", use_container_width=True)
     
-    # 분석 상태 유지
     if search_clicked and search_name:
         st.session_state.current_res = load_data_from_google_sheet(search_name)
         st.session_state.page_view = "result"
@@ -81,32 +80,26 @@ with st.sidebar:
     st.divider()
     if st.button("🏠 처음 화면으로", use_container_width=True):
         st.session_state.page_view = "welcome"
-        st.session_state.current_res = None
         st.rerun()
 
-    st.write("📂 **데이터 원본 관리**")
+    st.write("📂 **데이터 관리**")
     sheet_edit_url = "https://docs.google.com/spreadsheets/d/1EOpOWv83_7Bfkhzw1o78OlVYhdLAEAh5KbFdmtsyl6E/edit"
     st.link_button("구글 시트 열기", sheet_edit_url, use_container_width=True)
 
-# 4. 초기 화면 (Welcome Screen) 복구
+# 4. 초기 화면 (심플 버전)
 if "page_view" not in st.session_state or st.session_state.page_view == "welcome":
-    st.title("⚓ 선원 보건 안전 AI 리스크 관리 시스템")
-    st.info("왼쪽 사이드바에서 성명을 입력하고 [데이터 분석 실행]을 눌러주세요.")
-    
-    c1, c2, c3 = st.columns(3)
-    c1.markdown("#### 📝 데이터 연동\n구글 시트에 기록된 선원들의 다년간 건강검진 데이터를 AI가 즉시 분석합니다.")
-    c2.markdown("#### 📈 트렌드 예측\n과거 데이터를 바탕으로 향후 2년 뒤의 건강 지표 리스크를 선제적으로 예측합니다.")
-    c3.markdown("#### 🚨 안전 등급\n승선 적합 여부(Fit/Unfit)를 판정하고 긴급 상황 리스크 시나리오를 제공합니다.")
-    
-    st.image("https://images.unsplash.com/photo-1505228395891-9a51e7e86bf6?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80", caption="Safe Navigation through AI Health Monitoring")
+    st.markdown("<br><br><br><h1 style='text-align: center; font-size: 3.5rem;'>⚓ 선원 보건 안전 AI</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 1.2rem; color: #666;'>개인별 건강 지표 분석 및 리스크 예측 시스템</p>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.info("💡 왼쪽 메뉴에 **성명을 입력**한 후 [데이터 분석 실행]을 클릭하세요.")
 
 # 5. 분석 결과 화면
 elif st.session_state.page_view == "result":
     res = st.session_state.current_res
     if res:
-        st.title(f"⚓ {res['sheet_name']} 님 분석 보고서")
+        st.title(f"📊 {res['sheet_name']} 님 결과 분석")
         
-        # 데이터 계산
+        # 데이터 처리 로직
         summary_results = []
         total_score = 100
         years_num = [int(re.sub(r'[^0-9]', '', y)) for y in res['years']]
@@ -118,13 +111,10 @@ elif st.session_state.page_view == "result":
             y_list = [years_num[i] for i, v in enumerate(content['values']) if v > 0]
             curr = vals[-1] if vals else 0
             c = CRITERIA_MAP[key]
-            
             pred_val = None
             if len(vals) >= 2:
                 try: coeffs = np.polyfit(y_list, vals, 1); pred_val = round(coeffs[0] * next_year + coeffs[1], 1)
                 except: pass
-            
-            # 상태 판정
             status, color, loss = "안전", "#28A745", 0
             if key == "Hemoglobin(혈색소)":
                 if curr < c['warn_low'] or curr > c['warn_high']: status, color, loss = "위험", "#FF4B4B", 30
@@ -132,7 +122,6 @@ elif st.session_state.page_view == "result":
             else:
                 if curr > c['warn_high']: status, color, loss = "위험", "#FF4B4B", 30
                 elif curr > c['safe_high']: status, color, loss = "경계", "#FFD700", 7
-            
             total_score -= loss
             summary_results.append({"key": key, "val": curr, "status": status, "color": color, "advice": c['advice'][status], "pred": pred_val})
 
@@ -147,34 +136,41 @@ elif st.session_state.page_view == "result":
         
         st.divider()
 
-        with st.expander("🧐 상세분석 및 소견 확인하기", expanded=True):
-            if res['doc_note']: st.info(f"📋 **진단서 공식 의사소견:** {res['doc_note']}")
+        # 🧐 [수정 포인트 1] 상세분석 제목을 밖으로 빼고 열기/닫기 버튼을 아래로 배치
+        st.subheader("🧐 상세분석 및 소견")
+        with st.expander("결과 상세보기 / 접기", expanded=True):
+            if res['doc_note']: 
+                st.markdown(f"""
+                <div style="background-color: #e8f4f8; padding: 15px; border-radius: 10px; border-left: 5px solid #2980b9; margin-bottom: 20px;">
+                    <b style="font-size: 1.1rem; color: #2c3e50;">📋 진단서 공식 의사소견</b><br>
+                    <span style="font-size: 1rem; color: #34495e;">{res['doc_note']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            
             cols = st.columns(2)
             for i, item in enumerate(summary_results):
                 with cols[i % 2]:
                     c = CRITERIA_MAP[item['key']]
                     st.markdown(f"""
-                    <div style="padding:15px; border-radius:10px; border-left:8px solid {item['color']}; background-color:#fdfdfd; margin-bottom:15px; box-shadow: 2px 2px 8px rgba(0,0,0,0.05); color: black;">
-                        <b style="font-size:1.1rem;">{c['label']}</b> <br>
-                        <span style="color:{item['color']}; font-weight:bold;">상태: {item['status']} ({item['val']})</span><br>
-                        <p style="font-size:0.85rem; margin-top:10px; line-height:1.5;">
-                            <b>💡 AI 소견:</b> {item['advice']}<br>
-                            <b>⚓ 선내 리스크:</b> {c['risk_scenario']}
-                        </p>
+                    <div style="padding:20px; border-radius:12px; border-left:10px solid {item['color']}; background-color:#ffffff; margin-bottom:15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: black;">
+                        <b style="font-size:1.2rem;">{c['label']}</b> <br>
+                        <span style="color:{item['color']}; font-weight:bold; font-size:1.1rem;">현재 상태: {item['status']} ({item['val']})</span><br>
+                        <div style="margin-top:12px; font-size:1rem; line-height:1.6;">
+                            <b>💡 AI 분석 소견:</b> {item['advice']}<br>
+                            <hr style="margin: 10px 0; border: 0.5px solid #eee;">
+                            <b>⚓ 선내 리스크 시나리오:</b> {c['risk_scenario']}
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
 
         st.divider()
 
-        # 6. [오류 수정] 그래프 지표 선택 및 렌더링
+        # [수정 포인트 2] 리스크 추세 섹션 (기존과 통일감 유지)
         st.subheader("📈 리스크 추세 및 2년 후 예측")
-        
-        # 지표 선택 시 흰 화면이 뜨지 않도록 key값 부여 및 세션 유지
         sel_label = st.selectbox("확인 지표 선택", 
                                options=[CRITERIA_MAP[k]['label'] for k in res['data'].keys()],
                                key="indicator_select")
         
-        # 선택된 라벨로 키값 찾기
         sel_key = next(k for k, v in CRITERIA_MAP.items() if v['label'] == sel_label)
         c_sel = CRITERIA_MAP[sel_key]
         res_item = next(it for it in summary_results if it["key"] == sel_key)
@@ -185,8 +181,7 @@ elif st.session_state.page_view == "result":
 
         if v_clean:
             st.markdown(f"#### 📊 {c_sel['label']} 추이 ({current_labels[0]}년~{current_labels[-1]}년)")
-            
-            # 매번 새로운 figure 객체를 생성하여 충돌 방지
+            plt.clf() 
             fig, ax = plt.subplots(figsize=(10, 5))
             d_max = max(v_clean + [res_item['pred'] if res_item['pred'] else 0, c_sel['warn_high']]) * 1.4
             
@@ -206,8 +201,6 @@ elif st.session_state.page_view == "result":
 
             ax.set_ylim(0, d_max)
             ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-            
-            # 렌더링 후 메모리 해제
             st.pyplot(fig)
             plt.close(fig)
             
