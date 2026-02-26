@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
-import matplotlib
+import matplotlib.font_manager as fm
 import numpy as np
 import re
 import os
@@ -9,24 +9,26 @@ import os
 # 1. 최상단 설정
 st.set_page_config(page_title="선원 보건 안전 AI", layout="wide")
 
-# 2. 그래프 한글 폰트 강제 설정
+# 2. [중요] 그래프 한글 깨짐 방지 설정
 def set_korean_font():
     # 리눅스 서버(Streamlit Cloud) 환경 폰트 경로 우선순위
     paths = [
         '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
         '/usr/share/fonts/nanumfont/NanumGothic.ttf',
-        'NanumGothic.ttf' # GitHub 업로드 대비
+        'NanumGothic.ttf' 
     ]
     
-    import matplotlib.font_manager as fm
+    font_found = False
     for path in paths:
         if os.path.exists(path):
             fe = fm.FontEntry(fname=path, name='NanumGothic')
             fm.fontManager.ttflist.insert(0, fe)
             plt.rc('font', family='NanumGothic')
+            font_found = True
             break
-    else:
-        # 폰트 파일이 없을 경우 깨짐 방지 범용 설정
+    
+    if not font_found:
+        # 폰트가 없을 경우 기본 폰트로 설정 (네모 깨짐 방지)
         plt.rcParams['font.family'] = 'DejaVu Sans'
     
     plt.rcParams['axes.unicode_minus'] = False
@@ -102,13 +104,18 @@ def load_data_from_google_sheet(name):
         return {"years": years_list, "data": res_data, "doc_note": doc_note, "sheet_name": target_sheet}
     except: return None
 
-# 5. 메인 UI
+# 5. 메인 UI 및 사이드바 (버튼 추가)
 st.title("⚓ 선원 보건 안전 AI 리스크 관리 시스템")
 
 with st.sidebar:
     st.header("📋 데이터 입력")
     search_name = st.text_input("분석 성명", placeholder="예: 홍길동")
     btn = st.button("분석 실행", use_container_width=True)
+    
+    st.divider()
+    st.write("📂 **데이터 관리**")
+    sheet_edit_url = "https://docs.google.com/spreadsheets/d/1EOpOWv83_7Bfkhzw1o78OlVYhdLAEAh5KbFdmtsyl6E/edit"
+    st.link_button("구글 시트 열기", sheet_edit_url, use_container_width=True)
 
 if btn and search_name:
     res = load_data_from_google_sheet(search_name)
@@ -118,7 +125,9 @@ if btn and search_name:
         summary_results = []
         total_score = 100
         years_num = [int(re.sub(r'[^0-9]', '', y)) for y in res['years']]
-        clean_years_label = [f"{y}년" for y in years_num]
+        
+        # [수정] 그래프 축에는 숫자만 표시하여 깨짐 방지
+        clean_years_label = [f"{y}" for y in years_num]
         next_year = max(years_num) + 2 if years_num else 2027
 
         for key, content in res['data'].items():
@@ -177,7 +186,7 @@ if btn and search_name:
 
         st.divider()
 
-        # 오리지널 추세 그래프 디자인
+        # [수정] 그래프 섹션 - 한글 깨짐 원천 차단 디자인
         st.subheader("📈 리스크 추세 및 2년 후 예측")
         sel = st.selectbox("확인 지표 선택", list(res['data'].keys()), format_func=lambda x: CRITERIA_MAP[x]['label'])
         c_sel = CRITERIA_MAP[sel]
@@ -188,28 +197,31 @@ if btn and search_name:
         current_labels = clean_years_label[:len(y_vals)]
 
         if v_clean:
+            # 한글 제목은 그래프 밖(Streamlit)에서 출력하여 절대 안 깨지게 함
+            st.markdown(f"#### 📊 {c_sel['label']} 상세 추이 (단위: {current_labels[0]}년~{current_labels[-1]}년)")
+            
             fig, ax = plt.subplots(figsize=(11, 4.5))
             d_max = max(v_clean + [res_item['pred'] if res_item['pred'] else 0, c_sel['warn_high']]) * 1.4
             
-            # 구간 배경색 (영문 병기로 깨짐 방지)
-            ax.axhspan(0, c_sel.get('safe_high', 10), color='#4CAF50', alpha=0.15, label='Safe(안전)')
-            ax.axhspan(c_sel.get('safe_high', 10), c_sel['warn_high'], color='#FFEB3B', alpha=0.25, label='Caution(경계)')
-            ax.axhspan(c_sel['warn_high'], d_max*2, color='#F44336', alpha=0.15, label='Danger(위험)')
+            # [핵심] 범례와 축에서 한글을 빼서 깨짐 방지
+            ax.axhspan(0, c_sel.get('safe_high', 10), color='#4CAF50', alpha=0.1, label='Safe')
+            ax.axhspan(c_sel.get('safe_high', 10), c_sel['warn_high'], color='#FFEB3B', alpha=0.15, label='Caution')
+            ax.axhspan(c_sel['warn_high'], d_max*2, color='#F44336', alpha=0.1, label='Danger')
             
-            ax.plot(current_labels, y_vals, marker='o', color='#000080', lw=3, ms=8, label='Actual(실제)')
+            ax.plot(current_labels, y_vals, marker='o', color='#000080', lw=3, ms=8, label='Actual')
             
             if res_item['pred'] is not None:
-                pred_label = f"{next_year}년(예측)"
-                ax.plot([current_labels[-1], pred_label], [v_clean[-1], res_item['pred']], 
-                        color='#B71C1C', lw=3, ls=':', marker='D', ms=8, label='Predict(AI 예측)')
-                ax.text(pred_label, res_item['pred'] + (d_max*0.02), f'{res_item["pred"]}', ha='center', fontweight='bold', color='#B71C1C')
+                pred_year_label = str(next_year)
+                ax.plot([current_labels[-1], pred_year_label], [v_clean[-1], res_item['pred']], 
+                        color='#B71C1C', lw=3, ls=':', marker='D', ms=8, label='AI Predict')
+                ax.text(pred_year_label, res_item['pred'] + (d_max*0.02), f'{res_item["pred"]}', ha='center', fontweight='bold', color='#B71C1C')
 
             for i, v in enumerate(y_vals):
                 if v > 0: ax.text(i, v + (d_max*0.02), f'{v}', ha='center', fontsize=10, fontweight='bold')
 
             ax.set_ylim(0, d_max)
+            ax.set_xlabel("Year")
             ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
             st.pyplot(fig)
     else:
         st.error("성명을 찾을 수 없습니다.")
-
