@@ -5,12 +5,26 @@ import matplotlib
 import numpy as np
 import re
 
-# 1. 한글 및 시각화 설정
+# 1. 한글 및 시각화 설정 (리눅스 서버 환경 대응)
+import matplotlib.font_manager as fm
+
+# Streamlit Cloud의 리눅스 환경에 기본 설치된 폰트나 
+# 시스템 기본 폰트를 한글 대응이 가능한 폰트로 자동 설정합니다.
+plt.rc('font', family='NanumGothic') 
+matplotlib.rcParams['axes.unicode_minus'] = False
+
+# 만약 위 설정으로도 깨진다면 아래의 강제 설정 로직이 작동합니다.
 try:
-    matplotlib.rcParams['font.family'] = 'Malgun Gothic'
-    matplotlib.rcParams['axes.unicode_minus'] = False
+    # 나눔고딕이 설치되어 있는지 확인 후 설정
+    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+    if fm.FontEntry:
+        fe = fm.FontEntry(fname=font_path, name='NanumGothic')
+        fm.fontManager.ttflist.insert(0, fe)
+    plt.rc('font', family='NanumGothic')
 except:
-    pass
+    # 폰트 설치가 안 되어 있을 경우를 대비한 시스템 폰트 범용 설정
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS']
 
 # 2. 기준 데이터 설정 (상세 분석 소견 버전 유지)
 CRITERIA_MAP = {
@@ -232,4 +246,5 @@ if "result" in st.session_state and st.session_state.result:
 
 elif "result" in st.session_state:
     st.warning("구글 시트에서 해당 성명의 탭(시트)을 찾을 수 없습니다. 구글 시트 하단의 시트 이름을 확인해주세요.")
+
 
