@@ -7,7 +7,7 @@ import re
 import os
 
 # 1. 페이지 설정
-st.set_page_config(page_title="선원 보건 안전 AI", layout="wide")
+st.set_page_config(page_title="선원 보건 안전 AI", page_icon="⚓", layout="wide")
 
 # 2. 그래프 한글 깨짐 방지 설정
 def set_korean_font():
@@ -207,3 +207,4 @@ elif st.session_state.page_view == "result":
     else:
         st.error("성명을 찾을 수 없거나 데이터 로드에 실패했습니다.")
         st.session_state.page_view = "welcome"
+
