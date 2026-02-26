@@ -5,27 +5,24 @@ import matplotlib
 import numpy as np
 import re
 
-# 1. 한글 및 시각화 설정 (리눅스 서버 환경 대응)
+# 1. 한글 및 시각화 설정 (저장소 내 폰트 파일 직접 로드 방식)
 import matplotlib.font_manager as fm
+import os
 
-# Streamlit Cloud의 리눅스 환경에 기본 설치된 폰트나 
-# 시스템 기본 폰트를 한글 대응이 가능한 폰트로 자동 설정합니다.
-plt.rc('font', family='NanumGothic') 
+# 폰트 파일 경로 설정 (저장소에 올린 파일명과 일치해야 함)
+font_path = os.path.join(os.getcwd(), 'NanumGothic.ttf')
+
+if os.path.exists(font_path):
+    # 폰트 등록
+    font_prop = fm.FontProperties(fname=font_path)
+    plt.rc('font', family=font_prop.get_name())
+    # 폰트 매니저에 명시적으로 추가
+    fm.fontManager.addfont(font_path)
+else:
+    # 폰트가 없을 경우를 대비한 대체 설정
+    st.warning("⚠️ 폰트 파일을 찾을 수 없어 기본 폰트로 출력됩니다. GitHub에 NanumGothic.ttf를 올려주세요.")
+
 matplotlib.rcParams['axes.unicode_minus'] = False
-
-# 만약 위 설정으로도 깨진다면 아래의 강제 설정 로직이 작동합니다.
-try:
-    # 나눔고딕이 설치되어 있는지 확인 후 설정
-    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-    if fm.FontEntry:
-        fe = fm.FontEntry(fname=font_path, name='NanumGothic')
-        fm.fontManager.ttflist.insert(0, fe)
-    plt.rc('font', family='NanumGothic')
-except:
-    # 폰트 설치가 안 되어 있을 경우를 대비한 시스템 폰트 범용 설정
-    plt.rcParams['font.family'] = 'sans-serif'
-    plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial Unicode MS']
-
 # 2. 기준 데이터 설정 (상세 분석 소견 버전 유지)
 CRITERIA_MAP = {
     "Glucose": {
@@ -246,5 +243,6 @@ if "result" in st.session_state and st.session_state.result:
 
 elif "result" in st.session_state:
     st.warning("구글 시트에서 해당 성명의 탭(시트)을 찾을 수 없습니다. 구글 시트 하단의 시트 이름을 확인해주세요.")
+
 
 
