@@ -1,7 +1,7 @@
-streamlit
 pandas
+streamlit
 matplotlib
 numpy
-scikit-learn
-google-generativeai
+openpyxl
+
 
