@@ -1,120 +1,209 @@
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import numpy as np
-from sklearn.linear_model import LinearRegression
+import re
+import os
 
-# 1. 페이지 설정 (아이콘 및 타이틀)
-st.set_page_config(page_title="선원 보건 안전 AI", page_icon="⚓", layout="wide")
+# 1. 페이지 설정
+st.set_page_config(page_title="선원 보건 안전 AI", layout="wide")
 
-# 한글 폰트 설정 (윈도우/맥 호환을 위해 설정하지만, 웹 배포 시에는 기본 폰트 사용 권장)
-plt.rcParams['axes.unicode_minus'] = False
+# 2. 그래프 한글 깨짐 방지 설정
+def set_korean_font():
+    paths = [
+        '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
+        '/usr/share/fonts/nanumfont/NanumGothic.ttf',
+        'NanumGothic.ttf' 
+    ]
+    font_found = False
+    for path in paths:
+        if os.path.exists(path):
+            fe = fm.FontEntry(fname=path, name='NanumGothic')
+            fm.fontManager.ttflist.insert(0, fe)
+            plt.rc('font', family='NanumGothic')
+            font_found = True
+            break
+    if not font_found:
+        plt.rcParams['font.family'] = 'DejaVu Sans'
+    plt.rcParams['axes.unicode_minus'] = False
 
-# 2. 데이터베이스: 수치별 상세 소견 및 선상 관리 방안
-HEALTH_GUIDE = {
-    "혈압": {
-        "정상": {"소견": "혈압이 매우 안정적입니다. 심혈관 건강이 양호합니다.", "관리": "현재의 식습관을 유지하시고, 선내 염분 섭취에 계속 주의하세요."},
-        "주의": {"소견": "혈압이 다소 높습니다. 초기 고혈압 단계로 진입할 가능성이 있습니다.", "관리": "국물 요리 섭취를 줄이고, 매일 20분간 선상 스트레칭을 권장합니다."},
-        "위험": {"소견": "고혈압 위험군입니다. 뇌심혈관 질환 발생 가능성이 높으므로 정밀 진단이 필요합니다.", "관리": "즉시 선내 상비약을 확인하고, 육상 전문의 진료를 예약하십시오. 금연과 금주는 필수입니다."}
-    },
-    "혈당": {
-        "정상": {"소견": "당 대사가 원활하며 인슐린 저항성이 안정적입니다.", "관리": "정제 탄수화물(간식, 흰 빵) 섭취를 조절하여 현재 상태를 유지하세요."},
-        "주의": {"소견": "공복 혈당이 높습니다. 당뇨 전 단계(내당능 장애)일 수 있습니다.", "관리": "식후 15분간 선실 내에서 제자리 걷기를 하여 혈당 수치를 관리하세요."},
-        "위험": {"소견": "당뇨병 가능성이 매우 높습니다. 만성 합병증 예방이 시급합니다.", "관리": "식단에서 당분을 즉시 제외하고, 매일 정해진 시간에 혈당을 체크해야 합니다."}
-    },
-    "간수치": {
-        "정상": {"소견": "간 기능이 건강하게 유지되고 있습니다. 해독 능력이 좋습니다.", "관리": "피로 해소를 위해 규칙적인 수면 시간을 확보하세요."},
-        "주의": {"소견": "간에 피로가 쌓인 상태입니다. 지방간 혹은 과로 증상일 수 있습니다.", "관리": "충분한 수분 섭취와 함께 간장제 복용을 고려하고 음주를 자제하세요."},
-        "위험": {"소견": "간 손상이 우려되는 수치입니다. 간염 혹은 심한 지방간이 의심됩니다.", "관리": "절대 금주가 필요하며, 선장에게 보고 후 업무 강도를 낮추어 휴식을 취해야 합니다."}
-    }
+set_korean_font()
+
+# [CRITERIA_MAP 데이터 유지]
+CRITERIA_MAP = {
+    "Glucose": {"label": "Glucose (혈당)", "safe_high": 99, "warn_high": 125, "advice": {"안전": "공복 혈당이 정상 범위 내에 있으며 대사 기능이 매우 원활합니다.", "경계": "당뇨 전 단계 수준입니다. 식단 관리와 유산소 운동이 필수적입니다.", "위험": "고혈당 상태로 당뇨병 합병증 진행 위험이 큽니다. 전문의 진단이 필요합니다."}, "trend_bad": "상승", "risk_scenario": "당직 중 급격한 혈당 변화로 인한 의식 혼탁 및 집중력 장애 리스크."},
+    "AST(GOT)": {"label": "AST (간수치:피로)", "safe_high": 40, "warn_high": 80, "advice": {"안전": "간 세포 손상 징후가 없으며 에너지 대사가 양호합니다.", "경계": "과로나 수면 부족으로 간 세포가 자극받은 상태입니다. 충분한 휴식을 권고합니다.", "위험": "활동성 간염이나 간 손상이 진행 중입니다. 전신 무력감이 동반될 수 있습니다."}, "trend_bad": "상승", "risk_scenario": "만성 피로 누적으로 인한 반응 속도 저하 및 긴급 상황 대응 능력 감소."},
+    "ALT(GPT)": {"label": "ALT (간수치:지방간)", "safe_high": 40, "warn_high": 80, "advice": {"안전": "지방간 위험이 낮으며 간의 해독 작용이 정상입니다.", "경계": "초기 비알코올성 지방간이 우려됩니다. 체중 관리와 식단 조절이 필요합니다.", "위험": "지방간염 또는 약물성 간 손상 가능성이 높습니다. 전문의 진찰이 필요합니다."}, "trend_bad": "상승", "risk_scenario": "소화 불량 및 컨디션 난조 지속으로 인한 업무 효율 저하 리스크."},
+    "r-GTP(감마-GTP)": {"label": "r-GTP (알코올)", "safe_high": 63, "warn_high": 100, "advice": {"안전": "담도계 이상이 없으며 간 기능이 안정적입니다.", "경계": "잦은 음주로 간 기능이 과부화된 상태입니다. 금주와 휴식이 필요합니다.", "위험": "알코올성 간 손상 혹은 담도 폐쇄성 질환 가능성이 큽니다."}, "trend_bad": "상승", "risk_scenario": "해독 능력 저하로 인한 무기력증 및 선내 업무 태만 리스크."},
+    "T.Cholesterol(총콜레스테롤)": {"label": "T.Cholesterol (콜레스테롤)", "safe_high": 199, "warn_high": 239, "advice": {"안전": "혈관 벽 건강이 양호하며 심혈관 리스크가 낮습니다.", "경계": "이상지질혈증 경계 단계입니다. 식이섬유 섭취를 늘리십시오.", "위험": "동맥경화 및 심근경색 발생 확률이 높습니다. 매우 주의가 필요합니다."}, "trend_bad": "상승", "risk_scenario": "외해 항해 중 급성 심근경색 발생 시 의료 지원 불능으로 인한 사망 위험."},
+    "Hemoglobin(혈색소)": {"label": "Hemoglobin (혈색소)", "safe_low": 13, "safe_high": 17, "warn_low": 11, "warn_high": 18, "advice": {"안전": "체내 산소 공급 능력이 우수하며 빈혈 징후가 없습니다.", "경계": "경미한 빈혈 혹은 수분 부족이 의심됩니다. 철분 섭취를 권장합니다.", "위험": "중증 빈혈 상태로 어지럼증과 숨가쁨 증상이 나타날 수 있습니다."}, "trend_bad": "하락", "risk_scenario": "기립성 저혈압으로 인한 실족 및 추락, 작업 중 평형감각 저하 사고."},
+    "W.B.C(백혈구수)": {"label": "W.B.C (백혈구)", "safe_high": 10, "warn_high": 12, "advice": {"안전": "면역 체계가 안정적이며 염증 반응이 관찰되지 않습니다.", "경계": "가벼운 염증이나 스트레스로 면역 수치가 불안정한 상태입니다.", "위험": "급성 염증이나 감염이 진행 중입니다. 발열 여부 확인이 필요합니다."}, "trend_bad": "상승", "risk_scenario": "선내 집단 감염병 발생 시 전파 원인 및 본인 합병증 위험."}
 }
 
-# 3. 데이터 로드 함수
-@st.cache_data
-def load_data():
-    # [중요] 여기에 본인의 구글 시트 CSV 내보내기 주소를 넣으세요
-    SHEET_URL = "https://docs.google.com/spreadsheets/d/e/YOUR_ID/pub?output=csv"
-    df = pd.read_csv(SHEET_URL)
-    return df
+def load_data_from_google_sheet(name):
+    sheet_url = "https://docs.google.com/spreadsheets/d/1EOpOWv83_7Bfkhzw1o78OlVYhdLAEAh5KbFdmtsyl6E/export?format=xlsx"
+    try:
+        xls = pd.ExcelFile(sheet_url)
+        target_sheet = next((s for s in xls.sheet_names if name.replace(" ", "") in s.replace(" ", "")), None)
+        if not target_sheet: return None
+        raw = pd.read_excel(xls, sheet_name=target_sheet, header=None)
+        df = pd.read_excel(xls, sheet_name=target_sheet, skiprows=2)
+        years_list = raw.iloc[0, 2:8].dropna().astype(str).str.replace("년", "").tolist()
+        doc_note = None
+        mask = raw.astype(str).apply(lambda x: x.str.contains('의사소견|진단서|소견', na=False))
+        found = np.where(mask)
+        if len(found[0]) > 0:
+            r, c = found[0][0], found[1][0]
+            note_row = raw.iloc[r, c+1:].dropna()
+            if not note_row.empty: doc_note = str(note_row.iloc[0])
+        res_data = {}
+        for key in CRITERIA_MAP.keys():
+            search_key = key.split('(')[0]
+            row = df[df.iloc[:, 1].astype(str).str.contains(search_key, na=False, case=False)]
+            if not row.empty:
+                vals = pd.to_numeric(row.iloc[0, 2:2+len(years_list)], errors='coerce').fillna(0).tolist()
+                res_data[key] = {"values": vals}
+        return {"years": years_list, "data": res_data, "doc_note": doc_note, "sheet_name": target_sheet}
+    except: return None
 
-# 4. 메인 화면 구성
-st.title("⚓ 선원 보건 안전 AI 리스크 관리 시스템")
-st.info("실시간 건강 데이터 분석과 전문가 지식 베이스를 결합한 지능형 보건 관리 솔루션입니다.")
-
-try:
-    df = load_data()
-    name_list = df['이름'].unique()
+# 3. 사이드바 구성
+with st.sidebar:
+    st.header("📋 AI 선원 관리")
+    search_name = st.text_input("분석 성명", placeholder="성명을 입력하세요")
+    search_clicked = st.button("데이터 분석 실행", use_container_width=True)
     
-    # 사이드바 조회
-    st.sidebar.header("📋 선원 정보 조회")
-    target_name = st.sidebar.selectbox("선원 이름을 선택하세요", name_list)
+    if search_clicked and search_name:
+        st.session_state.current_res = load_data_from_google_sheet(search_name)
+        st.session_state.page_view = "result"
+    
+    st.divider()
+    if st.button("🏠 처음 화면으로", use_container_width=True):
+        st.session_state.page_view = "welcome"
+        st.rerun()
 
-    if target_name:
-        # 데이터 정렬 (검진일 기준)
-        user_data = df[df['이름'] == target_name].sort_values('검진일')
-        latest_data = user_data.iloc[-1]
+    st.write("📂 **데이터 관리**")
+    sheet_edit_url = "https://docs.google.com/spreadsheets/d/1EOpOWv83_7Bfkhzw1o78OlVYhdLAEAh5KbFdmtsyl6E/edit"
+    st.link_button("구글 시트 열기", sheet_edit_url, use_container_width=True)
+
+# 4. 초기 화면 (심플 버전)
+if "page_view" not in st.session_state or st.session_state.page_view == "welcome":
+    st.markdown("<br><br><br><h1 style='text-align: center; font-size: 3.5rem;'>⚓ 선원 보건 안전 AI</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; font-size: 1.2rem; color: #666;'>개인별 건강 지표 분석 및 리스크 예측 시스템</p>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.info("💡 왼쪽 메뉴에 **성명을 입력**한 후 [데이터 분석 실행]을 클릭하세요.")
+
+# 5. 분석 결과 화면
+elif st.session_state.page_view == "result":
+    res = st.session_state.current_res
+    if res:
+        st.title(f"📊 {res['sheet_name']} 님 결과 분석")
         
-        # 상단 대시보드 카드
-        st.subheader(f"👤 {target_name} 선원 분석 리포트 (최근 검진: {latest_data['검진일']})")
-        
-        # 분석 로직 (단순 예시이므로 실제 컬럼명에 맞춰 수정 필요)
+        # 데이터 처리 로직
         summary_results = []
-        cols = st.columns(3)
+        total_score = 100
+        years_num = [int(re.sub(r'[^0-9]', '', y)) for y in res['years']]
+        clean_years_label = [f"{y}" for y in years_num]
+        next_year = max(years_num) + 2 if years_num else 2027
+
+        for key, content in res['data'].items():
+            vals = [v for v in content['values'] if v > 0]
+            y_list = [years_num[i] for i, v in enumerate(content['values']) if v > 0]
+            curr = vals[-1] if vals else 0
+            c = CRITERIA_MAP[key]
+            pred_val = None
+            if len(vals) >= 2:
+                try: coeffs = np.polyfit(y_list, vals, 1); pred_val = round(coeffs[0] * next_year + coeffs[1], 1)
+                except: pass
+            status, color, loss = "안전", "#28A745", 0
+            if key == "Hemoglobin(혈색소)":
+                if curr < c['warn_low'] or curr > c['warn_high']: status, color, loss = "위험", "#FF4B4B", 30
+                elif curr < c['safe_low'] or curr > c['safe_high']: status, color, loss = "경계", "#FFD700", 7
+            else:
+                if curr > c['warn_high']: status, color, loss = "위험", "#FF4B4B", 30
+                elif curr > c['safe_high']: status, color, loss = "경계", "#FFD700", 7
+            total_score -= loss
+            summary_results.append({"key": key, "val": curr, "status": status, "color": color, "advice": c['advice'][status], "pred": pred_val})
+
+        # 점수 표시
+        c1, c2 = st.columns([1, 2])
+        final_score = max(0, total_score)
+        c1.metric("종합 보건 점수", f"{final_score} / 100")
+        with c2:
+            if any(r['status'] == "위험" for r in summary_results): st.error("### 최종 판정: 승선 부적합 (Unfit)")
+            elif final_score >= 80: st.success("### 최종 판정: 승선 적합 (Fit)")
+            else: st.warning("### 최종 판정: 조건부 적합 (Conditional Fit)")
         
-        # 항목별 체크 및 카드 출력
-        for i, item in enumerate(["혈압", "혈당", "간수치"]):
-            val = latest_data[item]
-            # 기준값 설정 (예시)
-            if item == "혈압": status = "정상" if val < 120 else ("주의" if val < 140 else "위험")
-            elif item == "혈당": status = "정상" if val < 100 else ("주의" if val < 126 else "위험")
-            else: status = "정상" if val < 40 else ("주의" if val < 60 else "위험")
+        st.divider()
+
+        # 🧐 [수정 포인트 1] 상세분석 제목을 밖으로 빼고 열기/닫기 버튼을 아래로 배치
+        st.subheader("🧐 상세분석 및 소견")
+        with st.expander("결과 상세보기 / 접기", expanded=True):
+            if res['doc_note']: 
+                st.markdown(f"""
+                <div style="background-color: #e8f4f8; padding: 15px; border-radius: 10px; border-left: 5px solid #2980b9; margin-bottom: 20px;">
+                    <b style="font-size: 1.1rem; color: #2c3e50;">📋 진단서 공식 의사소견</b><br>
+                    <span style="font-size: 1rem; color: #34495e;">{res['doc_note']}</span>
+                </div>
+                """, unsafe_allow_html=True)
             
-            summary_results.append({"key": item, "status": status, "val": val})
-            
-            with cols[i]:
-                st.metric(label=item, value=val, delta=status, delta_color="inverse" if status != "정상" else "normal")
+            cols = st.columns(2)
+            for i, item in enumerate(summary_results):
+                with cols[i % 2]:
+                    c = CRITERIA_MAP[item['key']]
+                    st.markdown(f"""
+                    <div style="padding:20px; border-radius:12px; border-left:10px solid {item['color']}; background-color:#ffffff; margin-bottom:15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: black;">
+                        <b style="font-size:1.2rem;">{c['label']}</b> <br>
+                        <span style="color:{item['color']}; font-weight:bold; font-size:1.1rem;">현재 상태: {item['status']} ({item['val']})</span><br>
+                        <div style="margin-top:12px; font-size:1rem; line-height:1.6;">
+                            <b>💡 AI 분석 소견:</b> {item['advice']}<br>
+                            <hr style="margin: 10px 0; border: 0.5px solid #eee;">
+                            <b>⚓ 선내 리스크 시나리오:</b> {c['risk_scenario']}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
         st.divider()
 
-        # 5. 상세 전문가 소견 섹션
-        st.subheader("👨‍⚕️ 전문가 분석 소견 및 선상 가이드라인")
+        # [수정 포인트 2] 리스크 추세 섹션 (기존과 통일감 유지)
+        st.subheader("📈 리스크 추세 및 2년 후 예측")
+        sel_label = st.selectbox("확인 지표 선택", 
+                               options=[CRITERIA_MAP[k]['label'] for k in res['data'].keys()],
+                               key="indicator_select")
         
-        for res in summary_results:
-            key = res['key']
-            status = res['status']
-            guide = HEALTH_GUIDE[key][status]
+        sel_key = next(k for k, v in CRITERIA_MAP.items() if v['label'] == sel_label)
+        c_sel = CRITERIA_MAP[sel_key]
+        res_item = next(it for it in summary_results if it["key"] == sel_key)
+        
+        y_vals = res['data'][sel_key]['values']
+        v_clean = [v for v in y_vals if v > 0]
+        current_labels = clean_years_label[:len(y_vals)]
+
+        if v_clean:
+            st.markdown(f"#### 📊 {c_sel['label']} 추이 ({current_labels[0]}년~{current_labels[-1]}년)")
+            plt.clf() 
+            fig, ax = plt.subplots(figsize=(10, 5))
+            d_max = max(v_clean + [res_item['pred'] if res_item['pred'] else 0, c_sel['warn_high']]) * 1.4
             
-            with st.expander(f"🔍 {key} 지표 상세 분석 ({status})", expanded=(status == "위험")):
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.markdown(f"**🩺 의학적 소견**\n\n{guide['소견']}")
-                with col_b:
-                    st.markdown(f"**⚓ 선상 관리 방안**\n\n{guide['관리']}")
+            ax.axhspan(0, c_sel.get('safe_high', 10), color='#4CAF50', alpha=0.1, label='Safe')
+            ax.axhspan(c_sel.get('safe_high', 10), c_sel['warn_high'], color='#FFEB3B', alpha=0.15, label='Caution')
+            ax.axhspan(c_sel['warn_high'], d_max*2, color='#F44336', alpha=0.1, label='Danger')
+            
+            ax.plot(current_labels, y_vals, marker='o', color='#000080', lw=3, ms=8, label='Actual')
+            
+            if res_item['pred'] is not None:
+                pred_year = str(next_year)
+                ax.plot([current_labels[-1], pred_year], [v_clean[-1], res_item['pred']], color='#B71C1C', lw=3, ls=':', marker='D', ms=8, label='AI Predict')
+                ax.text(pred_year, res_item['pred'] + (d_max*0.02), f'{res_item["pred"]}', ha='center', fontweight='bold', color='#B71C1C')
 
-        # 6. 추세 분석 및 미래 예측 그래프
-        st.divider()
-        st.subheader("📈 건강 추세 분석 및 2년 후 위험도 예측 (Linear Regression)")
-        
-        selected_metric = st.selectbox("분석할 지표를 선택하세요", ["혈압", "혈당", "간수치"])
-        
-        fig, ax = plt.subplots(figsize=(10, 4))
-        y = user_data[selected_metric].values
-        x = np.array(range(len(y))).reshape(-1, 1)
-        
-        # 선형 회귀 계산
-        lr_model = LinearRegression().fit(x, y)
-        future_x = np.array([[len(y)], [len(y)+1]])
-        future_y = lr_model.predict(future_x)
-        
-        # 그래프 그리기
-        ax.plot(user_data['검진일'], y, marker='o', label='과거 기록', color='#004085', linewidth=2)
-        ax.plot(['1회차 후(예측)', '2회차 후(예측)'], future_y, 'r--', marker='x', label='AI 예측 경로')
-        ax.set_title(f"{selected_metric} 변화 추이 및 예측", fontsize=12)
-        ax.legend()
-        st.pyplot(fig)
+            for i, v in enumerate(y_vals):
+                if v > 0: ax.text(i, v + (d_max*0.02), f'{v}', ha='center', fontsize=10, fontweight='bold')
 
-        if any(r['status'] == "위험" for r in summary_results):
-            st.warning("⚠️ 현재 위험 수치가 감지되었습니다. 원격 의료 상담 혹은 하선 후 정밀 검진이 강력히 권고됩니다.")
-
-except Exception as e:
-    st.error(f"데이터를 불러올 수 없습니다. 구글 시트 주소와 컬럼명을 확인하세요. (에러: {e})")
+            ax.set_ylim(0, d_max)
+            ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+            st.pyplot(fig)
+            plt.close(fig)
+            
+    else:
+        st.error("성명을 찾을 수 없거나 데이터 로드에 실패했습니다.")
+        st.session_state.page_view = "welcome"
