@@ -7,7 +7,7 @@ import re
 import os
 
 # 1. 페이지 설정
-st.set_page_config(page_title="선원 보건 안전 AI", layout="wide")
+st.set_page_config(page_title="선원 보건 안전 AI", page_icon="⚓", layout="wide")
 
 # 2. 그래프 한글 깨짐 방지 설정
 def set_korean_font():
@@ -30,7 +30,45 @@ def set_korean_font():
 
 set_korean_font()
 
-# [CRITERIA_MAP 데이터 유지]
+# [분석 및 관리 방안 데이터베이스]
+HEALTH_GUIDE = {
+    "Glucose": {
+        "안전": "혈당 대사가 매우 원활합니다. 현재의 식습관을 유지하십시오.",
+        "경계": "당뇨 전 단계입니다. 식후 15분 선내 복도 걷기와 정제 탄수화물(라면, 빵) 섭취 제한이 필요합니다.",
+        "위험": "고혈당 상태입니다. 선내 상비약 확인이 필요하며, 갈증이나 다뇨 증상 시 즉시 보고하십시오."
+    },
+    "AST(GOT)": {
+        "안전": "간 세포 상태가 양호합니다. 충분한 수면으로 현재 상태를 유지하세요.",
+        "경계": "일시적 피로 누적 상태입니다. 고단백 식단을 지양하고 간장제 복용 및 7시간 이상의 수면을 권장합니다.",
+        "위험": "간 손상이 진행 중입니다. 절대 금주가 필요하며 업무 강도 조절을 선장에게 요청하십시오."
+    },
+    "ALT(GPT)": {
+        "안전": "지방간 위험이 낮습니다. 적절한 체중을 유지하고 있습니다.",
+        "경계": "초기 지방간이 의심됩니다. 선내 식단 중 튀김류를 줄이고 매일 20분간 맨몸 운동을 시행하세요.",
+        "위험": "지방간염 가능성이 큽니다. 과도한 당분 섭취를 피하고 하선 후 정밀 초음파 검사가 필요합니다."
+    },
+    "r-GTP(감마-GTP)": {
+        "안전": "담도 및 알코올성 손상 징후가 없습니다.",
+        "경계": "간의 해독 기능이 저하되었습니다. 최소 2주간 완전 금주를 실천하고 충분한 수분을 섭취하세요.",
+        "위험": "심각한 간 과부하 상태입니다. 알코올 섭취를 중단하고 비타민 B군 섭취를 늘리십시오."
+    },
+    "T.Cholesterol(총콜레스테롤)": {
+        "안전": "혈관이 깨끗하며 혈행이 원활합니다.",
+        "경계": "이상지질혈증 주의 단계입니다. 오메가-3가 풍부한 생선 위주의 식단을 선택하고 인스턴트 식품을 피하세요.",
+        "위험": "동맥경화 위험이 높습니다. 혈압을 수시로 체크하고 응급상황(가슴 통증) 대비 요령을 숙지하십시오."
+    },
+    "Hemoglobin(혈색소)": {
+        "안전": "산소 운반 능력이 정상이며 활력이 좋습니다.",
+        "경계": "철분 부족이나 가벼운 탈수 상태입니다. 충분한 수분 보충과 육류/시금치 섭취를 늘리십시오.",
+        "위험": "중증 빈혈입니다. 갑작스러운 이동 시 실족 위험이 크므로 항상 난간을 잡고 이동하십시오."
+    },
+    "W.B.C(백혈구수)": {
+        "안전": "면역 체계가 매우 안정적입니다.",
+        "경계": "미세한 염증 반응이 있습니다. 구강 청결과 개인 위생에 신경 쓰고 과로를 피하십시오.",
+        "위험": "급성 감염 징후입니다. 체온을 측정하여 기록하고 발열 시 즉시 선내 격리 및 약물 치료를 시작하세요."
+    }
+}
+
 CRITERIA_MAP = {
     "Glucose": {"label": "Glucose (혈당)", "safe_high": 99, "warn_high": 125, "advice": {"안전": "공복 혈당이 정상 범위 내에 있으며 대사 기능이 매우 원활합니다.", "경계": "당뇨 전 단계 수준입니다. 식단 관리와 유산소 운동이 필수적입니다.", "위험": "고혈당 상태로 당뇨병 합병증 진행 위험이 큽니다. 전문의 진단이 필요합니다."}, "trend_bad": "상승", "risk_scenario": "당직 중 급격한 혈당 변화로 인한 의식 혼탁 및 집중력 장애 리스크."},
     "AST(GOT)": {"label": "AST (간수치:피로)", "safe_high": 40, "warn_high": 80, "advice": {"안전": "간 세포 손상 징후가 없으며 에너지 대사가 양호합니다.", "경계": "과로나 수면 부족으로 간 세포가 자극받은 상태입니다. 충분한 휴식을 권고합니다.", "위험": "활동성 간염이나 간 손상이 진행 중입니다. 전신 무력감이 동반될 수 있습니다."}, "trend_bad": "상승", "risk_scenario": "만성 피로 누적으로 인한 반응 속도 저하 및 긴급 상황 대응 능력 감소."},
@@ -86,7 +124,7 @@ with st.sidebar:
     sheet_edit_url = "https://docs.google.com/spreadsheets/d/1EOpOWv83_7Bfkhzw1o78OlVYhdLAEAh5KbFdmtsyl6E/edit"
     st.link_button("구글 시트 열기", sheet_edit_url, use_container_width=True)
 
-# 4. 초기 화면 (심플 버전)
+# 4. 초기 화면
 if "page_view" not in st.session_state or st.session_state.page_view == "welcome":
     st.markdown("<br><br><br><h1 style='text-align: center; font-size: 3.5rem;'>⚓ 선원 보건 안전 AI</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; font-size: 1.2rem; color: #666;'>개인별 건강 지표 분석 및 리스크 예측 시스템</p>", unsafe_allow_html=True)
@@ -99,7 +137,6 @@ elif st.session_state.page_view == "result":
     if res:
         st.title(f"📊 {res['sheet_name']} 님 결과 분석")
         
-        # 데이터 처리 로직
         summary_results = []
         total_score = 100
         years_num = [int(re.sub(r'[^0-9]', '', y)) for y in res['years']]
@@ -125,7 +162,6 @@ elif st.session_state.page_view == "result":
             total_score -= loss
             summary_results.append({"key": key, "val": curr, "status": status, "color": color, "advice": c['advice'][status], "pred": pred_val})
 
-        # 점수 표시
         c1, c2 = st.columns([1, 2])
         final_score = max(0, total_score)
         c1.metric("종합 보건 점수", f"{final_score} / 100")
@@ -136,9 +172,9 @@ elif st.session_state.page_view == "result":
         
         st.divider()
 
-        # 🧐 [수정 포인트 1] 상세분석 제목을 밖으로 빼고 열기/닫기 버튼을 아래로 배치
-        st.subheader("🧐 상세분석 및 소견")
-        with st.expander("결과 상세보기 / 접기", expanded=True):
+        # 🧐 상세분석 및 소견 (강화된 버전)
+        st.subheader("🧐 상세분석 및 관리 가이드라인")
+        with st.expander("분석 결과 및 맞춤형 관리 방안 보기", expanded=True):
             if res['doc_note']: 
                 st.markdown(f"""
                 <div style="background-color: #e8f4f8; padding: 15px; border-radius: 10px; border-left: 5px solid #2980b9; margin-bottom: 20px;">
@@ -151,21 +187,27 @@ elif st.session_state.page_view == "result":
             for i, item in enumerate(summary_results):
                 with cols[i % 2]:
                     c = CRITERIA_MAP[item['key']]
+                    # 새로 추가한 관리 방안 데이터 가져오기
+                    management = HEALTH_GUIDE[item['key']][item['status']]
+                    
                     st.markdown(f"""
                     <div style="padding:20px; border-radius:12px; border-left:10px solid {item['color']}; background-color:#ffffff; margin-bottom:15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); color: black;">
-                        <b style="font-size:1.2rem;">{c['label']}</b> <br>
+                        <b style="font-size:1.2rem; color:#333;">{c['label']}</b> <br>
                         <span style="color:{item['color']}; font-weight:bold; font-size:1.1rem;">현재 상태: {item['status']} ({item['val']})</span><br>
-                        <div style="margin-top:12px; font-size:1rem; line-height:1.6;">
-                            <b>💡 AI 분석 소견:</b> {item['advice']}<br>
+                        <div style="margin-top:12px; font-size:0.95rem; line-height:1.6;">
+                            <b>🩺 전문 분석 소견:</b> {item['advice']}<br>
+                            <div style="background-color:#f9f9f9; padding:10px; border-radius:8px; margin-top:8px; border:1px solid #eee;">
+                                <b>⚓ 선내 관리 방안:</b> {management}
+                            </div>
                             <hr style="margin: 10px 0; border: 0.5px solid #eee;">
-                            <b>⚓ 선내 리스크 시나리오:</b> {c['risk_scenario']}
+                            <b>⚠️ 위험 시나리오:</b> {c['risk_scenario']}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
 
         st.divider()
 
-        # [수정 포인트 2] 리스크 추세 섹션 (기존과 통일감 유지)
+        # 리스크 추세 섹션
         st.subheader("📈 리스크 추세 및 2년 후 예측")
         sel_label = st.selectbox("확인 지표 선택", 
                                options=[CRITERIA_MAP[k]['label'] for k in res['data'].keys()],
